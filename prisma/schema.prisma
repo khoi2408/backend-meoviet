@@ -1,0 +1,211 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReactionType {
+  LIKE
+  DISLIKE
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model User {
+  id                    String            @id @default(uuid())
+  userName              String            @unique
+  fullName              String
+  password              String
+  role                  Role              @default(USER)
+  status                UserStatus        @default(ACTIVE)
+  isDeleted             Boolean           @default(false)
+  avatarUrl             String?           @db.Text
+  deletedAt             DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  posts                 Post[]
+  bookmarks             Bookmark[]
+  postReactions         PostReaction[]
+  commentReactions      CommentReaction[]
+  refreshTokens         RefreshToken[]
+  comments              Comment[]
+  hiddenPosts           HiddenPost[]
+  notificationsReceived Notification[]    @relation("UserNotifications")
+  notificationsSent     Notification[]    @relation("SenderNotifications")
+}
+
+model Category {
+  id        String              @id @default(uuid())
+  name      String              @unique
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  posts     CategoriesOnPosts[]
+}
+
+model CategoriesOnPosts {
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId     String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId String
+
+  @@id([postId, categoryId])
+}
+
+model Post {
+  id          String              @id @default(uuid())
+  content     String              @db.Text
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  user        User                @relation(fields: [userId], references: [id])
+  userId      String
+  categories  CategoriesOnPosts[]
+  comments    Comment[]
+  reactions   PostReaction[]
+  bookmarks   Bookmark[]
+  medias      Media[]
+  hiddenPosts HiddenPost[]
+
+  @@index([createdAt])
+}
+
+model Comment {
+  id        Int               @id @default(autoincrement())
+  content   String            @db.Text
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String
+  post      Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parentId  Int?
+  parent    Comment?          @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[]         @relation("CommentReplies")
+  mediaUrl  String?           @db.Text
+  mediaType MediaType?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  reactions CommentReaction[]
+}
+
+model CommentReaction {
+  userId    String
+  commentId Int
+  type      ReactionType
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   Comment      @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@id([userId, commentId])
+  @@index([commentId])
+}
+
+model PostReaction {
+  userId    String
+  postId    String
+  type      ReactionType
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@id([userId, postId])
+  @@index([postId])
+}
+
+model Bookmark {
+  userId    String
+  postId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, postId])
+}
+
+model Media {
+  id String @id @default(uuid())
+
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  type MediaType
+
+  url String @db.Text
+
+  order Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([postId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique @db.VarChar(255)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model HiddenPost {
+  userId    String
+  postId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, postId])
+  @@index([postId])
+}
+
+model SearchQuery {
+  id        String   @id @default(uuid())
+  keyword   String
+  createdAt DateTime @default(now())
+}
+
+enum NotificationType {
+  LIKE_POST
+  LIKE_COMMENT
+  COMMENT_POST
+  REPLY_COMMENT
+  ADMIN_DELETE_POST
+  ADMIN_DELETE_COMMENT
+  SYSTEM_WELCOME
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String           @db.Text
+  isRead    Boolean          @default(false)
+  postId    String?
+  commentId String?
+  senderId  String?
+  sender    User?            @relation("SenderNotifications", fields: [senderId], references: [id], onDelete: SetNull)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId])
+}

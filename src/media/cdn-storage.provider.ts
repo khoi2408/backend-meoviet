@@ -8,7 +8,7 @@ export class CDNStorageProvider implements StorageProvider {
   async upload(file: Express.Multer.File, folder: string): Promise<string> {
     const fileExt = path.extname(file.originalname).toLowerCase();
     const uniqueFilename = `${randomUUID()}${fileExt}`;
-    const baseUrl = process.env.MEDIA_BASE_URL || 'https://cdn.meodangian.com';
+    const baseUrl = process.env.CDN_BASE_URL || 'https://cdn.meodangian.com';
     return `${baseUrl}/uploads/${folder}/${uniqueFilename}`;
   }
 

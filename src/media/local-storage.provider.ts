@@ -6,6 +6,11 @@ import { randomUUID } from 'crypto';
 
 @Injectable()
 export class LocalStorageProvider implements StorageProvider {
+  private getBaseUrl(): string {
+    const port = process.env.PORT || 5000;
+    return process.env.MEDIA_BASE_URL || `http://localhost:${port}`;
+  }
+
   async upload(file: Express.Multer.File, folder: string): Promise<string> {
     const uploadDir = path.join(process.cwd(), 'uploads', folder);
     if (!fs.existsSync(uploadDir)) {
@@ -18,13 +23,13 @@ export class LocalStorageProvider implements StorageProvider {
 
     await fs.promises.writeFile(filePath, file.buffer);
 
-    const baseUrl = process.env.MEDIA_BASE_URL || 'http://localhost:5000';
+    const baseUrl = this.getBaseUrl();
     return `${baseUrl}/uploads/${folder}/${uniqueFilename}`;
   }
 
   async delete(fileUrl: string): Promise<void> {
     try {
-      const baseUrl = process.env.MEDIA_BASE_URL || 'http://localhost:5000';
+      const baseUrl = this.getBaseUrl();
       if (!fileUrl.startsWith(baseUrl)) {
         return;
       }

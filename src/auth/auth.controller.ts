@@ -66,11 +66,28 @@ export class AuthController {
   }
 
   private clearAuthCookies(res: Response) {
-    const clearOptions = this.getCookieOptions();
-    res.clearCookie('access_token', clearOptions);
-    res.clearCookie('refresh_token', clearOptions);
-    // Clear legacy path if previously set
-    res.clearCookie('refresh_token', { ...clearOptions, path: '/api/v1/auth' });
+    const isSecure =
+      process.env.NODE_ENV === 'production' ||
+      process.env.VERCEL === '1' ||
+      process.env.SECURE_COOKIES === 'true';
+
+    const clearOpts = {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: (isSecure ? 'none' : 'lax') as 'none' | 'lax',
+      maxAge: 0,
+      expires: new Date(0),
+    };
+
+    // Explicitly set cookie headers with maxAge: 0 and past expires across all paths
+    res.cookie('access_token', '', { ...clearOpts, path: '/' });
+    res.cookie('refresh_token', '', { ...clearOpts, path: '/' });
+    res.cookie('refresh_token', '', { ...clearOpts, path: '/api/v1/auth' });
+    res.cookie('refresh_token', '', { ...clearOpts, path: '/api/v1' });
+
+    res.clearCookie('access_token', { ...clearOpts, path: '/' });
+    res.clearCookie('refresh_token', { ...clearOpts, path: '/' });
+    res.clearCookie('refresh_token', { ...clearOpts, path: '/api/v1/auth' });
   }
 
   @Post('register')
@@ -137,13 +154,52 @@ export class AuthController {
   @ApiOperation({ summary: 'Đăng xuất tài khoản, thu hồi refresh token' })
   @ApiResponse({ status: 200, description: 'Đăng xuất thành công' })
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const refreshToken = req.cookies['refresh_token'];
-    if (refreshToken) {
-      await this.authService.logout(refreshToken).catch(() => {
-        // Suppress errors during logout if token was already deleted/expired
-      });
+    // 1. Extract all refresh tokens from raw cookie header (handles duplicates across paths)
+    const rawCookies = req.headers.cookie || '';
+    const tokenRegex = /refresh_token=([^;]+)/g;
+    let match;
+    const tokensToRevoke: string[] = [];
+
+    while ((match = tokenRegex.exec(rawCookies)) !== null) {
+      if (match[1]) {
+        tokensToRevoke.push(decodeURIComponent(match[1]));
+      }
     }
+
+    if (req.cookies && req.cookies['refresh_token']) {
+      tokensToRevoke.push(req.cookies['refresh_token']);
+    }
+
+    // 2. Extract userId from access token or refresh tokens to revoke all active sessions
+    let userId: string | null = null;
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const accessToken = bearerToken || req.cookies?.['access_token'];
+
+    if (accessToken) {
+      try {
+        const decoded: any = this.tokenService.decodeToken(accessToken);
+        if (decoded?.sub) userId = decoded.sub;
+      } catch {}
+    }
+
+    for (const token of tokensToRevoke) {
+      if (!userId) {
+        try {
+          const decoded: any = this.tokenService.decodeToken(token);
+          if (decoded?.sub) userId = decoded.sub;
+        } catch {}
+      }
+      await this.tokenService.revokeRefreshToken(token).catch(() => {});
+    }
+
+    if (userId) {
+      await this.tokenService.revokeAllUserRefreshTokens(userId).catch(() => {});
+    }
+
+    // 3. Purge all cookies with maxAge: 0 and past expires
     this.clearAuthCookies(res);
+
     return {
       success: true,
       message: 'Đăng xuất thành công',

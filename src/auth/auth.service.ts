@@ -124,8 +124,13 @@ export class AuthService {
     };
   }
 
-  async logout(token: string) {
-    await this.tokenService.revokeRefreshToken(token);
+  async logout(token?: string, userId?: string) {
+    if (token) {
+      await this.tokenService.revokeRefreshToken(token).catch(() => {});
+    }
+    if (userId) {
+      await this.tokenService.revokeAllUserRefreshTokens(userId).catch(() => {});
+    }
   }
 
   async getCurrentUser(userId: string) {

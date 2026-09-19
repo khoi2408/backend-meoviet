@@ -95,6 +95,21 @@ export class TokenService {
     });
   }
 
+  async revokeAllUserRefreshTokens(userId: string): Promise<void> {
+    if (!userId) return;
+    await this.prisma.refreshToken.deleteMany({
+      where: { userId },
+    });
+  }
+
+  decodeToken(token: string): any {
+    try {
+      return this.jwtService.decode(token);
+    } catch {
+      return null;
+    }
+  }
+
   private hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
   }

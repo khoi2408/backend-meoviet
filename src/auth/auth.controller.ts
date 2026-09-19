@@ -42,27 +42,35 @@ export class AuthController {
     private readonly usersService: UsersService,
   ) {}
 
-  private setRefreshCookie(res: Response, token: string) {
-    const isProduction = process.env.NODE_ENV === 'production';
-    const maxAge = this.tokenService.getRefreshCookieMaxAgeMs();
+  private getCookieOptions(maxAge?: number) {
+    const isSecure =
+      process.env.NODE_ENV === 'production' ||
+      process.env.VERCEL === '1' ||
+      process.env.SECURE_COOKIES === 'true';
 
-    res.cookie('refresh_token', token, {
+    return {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      maxAge,
-      path: '/api/v1/auth', // Restrict cookie path to auth endpoints for security
-    });
+      secure: isSecure,
+      sameSite: (isSecure ? 'none' : 'lax') as 'none' | 'lax',
+      path: '/',
+      ...(maxAge !== undefined ? { maxAge } : {}),
+    };
   }
 
-  private clearRefreshCookie(res: Response) {
-    const isProduction = process.env.NODE_ENV === 'production';
-    res.clearCookie('refresh_token', {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      path: '/api/v1/auth',
-    });
+  private setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
+    const accessMaxAge = this.tokenService.getAccessCookieMaxAgeMs();
+    const refreshMaxAge = this.tokenService.getRefreshCookieMaxAgeMs();
+
+    res.cookie('access_token', accessToken, this.getCookieOptions(accessMaxAge));
+    res.cookie('refresh_token', refreshToken, this.getCookieOptions(refreshMaxAge));
+  }
+
+  private clearAuthCookies(res: Response) {
+    const clearOptions = this.getCookieOptions();
+    res.clearCookie('access_token', clearOptions);
+    res.clearCookie('refresh_token', clearOptions);
+    // Clear legacy path if previously set
+    res.clearCookie('refresh_token', { ...clearOptions, path: '/api/v1/auth' });
   }
 
   @Post('register')
@@ -91,7 +99,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.login(dto);
-    this.setRefreshCookie(res, result.refreshToken);
+    this.setAuthCookies(res, result.accessToken, result.refreshToken);
     return {
       user: result.user,
       accessToken: result.accessToken,
@@ -118,7 +126,7 @@ export class AuthController {
     }
 
     const result = await this.authService.refresh(refreshToken);
-    this.setRefreshCookie(res, result.newRefreshToken);
+    this.setAuthCookies(res, result.accessToken, result.newRefreshToken);
     return {
       accessToken: result.accessToken,
     };
@@ -135,7 +143,7 @@ export class AuthController {
         // Suppress errors during logout if token was already deleted/expired
       });
     }
-    this.clearRefreshCookie(res);
+    this.clearAuthCookies(res);
     return {
       success: true,
       message: 'Đăng xuất thành công',

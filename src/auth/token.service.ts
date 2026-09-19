@@ -99,6 +99,15 @@ export class TokenService {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
+  getAccessCookieMaxAgeMs(): number {
+    const defaultMs = 15 * 60 * 1000;
+    try {
+      return (ms(this.accessExpires as any) as unknown as number) || defaultMs;
+    } catch {
+      return defaultMs;
+    }
+  }
+
   getRefreshCookieMaxAgeMs(): number {
     // Parse duration string into ms
     // Default to 7 days if parsing fails

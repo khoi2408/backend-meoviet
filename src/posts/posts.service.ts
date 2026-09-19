@@ -281,20 +281,25 @@ export class PostsService {
 
       // 3. Update Medias
       if (dto.medias !== undefined) {
-        // Query existing medias to delete physical files
+        // Query existing medias to determine removed files
         const oldMedias = await tx.media.findMany({
           where: { postId: id },
         });
 
-        // Clear existing medias
+        const newMediaUrls = new Set(dto.medias.map((m) => m.url));
+        const removedMedias = oldMedias.filter(
+          (oldMedia) => !newMediaUrls.has(oldMedia.url),
+        );
+
+        // Clear existing medias in database
         await tx.media.deleteMany({
           where: { postId: id },
         });
 
-        // Delete physical files
-        for (const media of oldMedias) {
+        // Delete physical files that were actually removed
+        for (const media of removedMedias) {
           await this.mediaService.deleteFile(media.url).catch((err) => {
-            console.error('Failed to delete old media file:', err);
+            console.error('Failed to delete removed media file:', err);
           });
         }
 

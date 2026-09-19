@@ -99,14 +99,24 @@ export class SupabaseStorageProvider implements StorageProvider, OnModuleInit {
     if (!this.supabase || !fileUrl) return;
 
     try {
-      const urlPattern = `/storage/v1/object/public/${this.bucketName}/`;
-      if (fileUrl.includes(urlPattern)) {
-        const filePath = fileUrl.split(urlPattern)[1];
-        if (filePath) {
-          const { error } = await this.supabase.storage.from(this.bucketName).remove([filePath]);
-          if (error) {
-            this.logger.error(`Lỗi khi xóa file trên Supabase: ${error.message}`);
-          }
+      const publicPattern = `/storage/v1/object/public/${this.bucketName}/`;
+      const signPattern = `/storage/v1/object/sign/${this.bucketName}/`;
+      let filePath: string | null = null;
+
+      if (fileUrl.includes(publicPattern)) {
+        filePath = fileUrl.split(publicPattern)[1];
+      } else if (fileUrl.includes(signPattern)) {
+        filePath = fileUrl.split(signPattern)[1];
+      }
+
+      if (filePath) {
+        // Strip query parameters and decode URL
+        filePath = decodeURIComponent(filePath.split('?')[0]);
+        const { error } = await this.supabase.storage.from(this.bucketName).remove([filePath]);
+        if (error) {
+          this.logger.error(`Lỗi khi xóa file "${filePath}" trên Supabase: ${error.message}`);
+        } else {
+          this.logger.log(`Đã xóa file "${filePath}" khỏi Supabase bucket "${this.bucketName}".`);
         }
       }
     } catch (err) {
